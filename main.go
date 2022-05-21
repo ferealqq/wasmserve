@@ -18,8 +18,8 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -27,8 +27,11 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
+
+	"github.com/cosmtrek/air/runner"
 )
 
 const indexHTML = `<!DOCTYPE html>
@@ -49,11 +52,6 @@ const indexHTML = `<!DOCTYPE html>
     go.argv = {{.Argv}};
     go.run(result.instance);
   }
-  const reload = await fetch('_wait');
-  // The server sends a response for '_wait' when a request is sent to '_notify'.
-  if (reload.ok) {
-    location.reload();
-  }
 })();
 </script>
 `
@@ -63,25 +61,18 @@ var (
 	flagTags        = flag.String("tags", "", "Build tags")
 	flagAllowOrigin = flag.String("allow-origin", "", "Allow specified origin (or * for all origins) to make requests to this server")
 	flagOverlay     = flag.String("overlay", "", "Overwrite source files with a JSON file (see https://pkg.go.dev/cmd/go for more details)")
+	flagTailwind    = flag.Bool("enable-tailwind", false, "Use tailwind")
+	flagBuild       = flag.Bool("build", false, "Build tailwind & wasm")
+	flagRun         = flag.Bool("run", false, "Run HTTP server")
+	flagWatch       = flag.Bool("watch", false, "Watch file changes and serve http")
+	flagAirConf     = flag.String("config", "air.toml", "Path to air.toml configuration")
 )
 
 var (
-	tmpOutputDir = ""
-	waitChannel  = make(chan struct{})
+	waitChannel = make(chan struct{})
+	conf        = new(config)
+	cssFiles    = new(CssFiles)
 )
-
-func ensureTmpOutputDir() (string, error) {
-	if tmpOutputDir != "" {
-		return tmpOutputDir, nil
-	}
-
-	tmp, err := ioutil.TempDir("", "")
-	if err != nil {
-		return "", err
-	}
-	tmpOutputDir = tmp
-	return tmpOutputDir, nil
-}
 
 func hasGo111Module(env []string) bool {
 	for _, e := range env {
@@ -97,15 +88,11 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", *flagAllowOrigin)
 	}
 
-	output, err := ensureTmpOutputDir()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	// output := conf.TmpDir
 
 	upath := r.URL.Path[1:]
 	fpath := path.Base(upath)
-	workdir := "."
+	// workdir := "."
 
 	if !strings.HasSuffix(r.URL.Path, "/") {
 		fi, err := os.Stat(fpath)
@@ -157,77 +144,72 @@ func handle(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		} else if errors.Is(err, fs.ErrNotExist) {
-			// go build
-			args := []string{"build", "-o", filepath.Join(output, "main.wasm")}
-			if *flagTags != "" {
-				args = append(args, "-tags", *flagTags)
-			}
-			if *flagOverlay != "" {
-				args = append(args, "-overlay", *flagOverlay)
-			}
-			if len(flag.Args()) > 0 {
-				args = append(args, flag.Args()[0])
-			} else {
-				args = append(args, ".")
-			}
-			log.Print("go ", strings.Join(args, " "))
-			cmdBuild := exec.Command("go", args...)
-			cmdBuild.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
-			// If GO111MODULE is not specified explicitly, enable Go modules.
-			// Enabling this is for backward compatibility of wasmserve.
-			if !hasGo111Module(cmdBuild.Env) {
-				cmdBuild.Env = append(cmdBuild.Env, "GO111MODULE=on")
-			}
-			cmdBuild.Dir = workdir
-			out, err := cmdBuild.CombinedOutput()
-			if err != nil {
-				log.Print(err)
-				log.Print(string(out))
-				http.Error(w, string(out), http.StatusInternalServerError)
-				return
-			}
-			if len(out) > 0 {
-				log.Print(string(out))
-			}
-
-			f, err := os.Open(filepath.Join(output, "main.wasm"))
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			defer f.Close()
-			http.ServeContent(w, r, "main.wasm", time.Now(), f)
+			http.ServeFile(w, r, conf.wasmPath)
 			return
 		}
-	case "_wait":
-		waitForUpdate(w, r)
-		return
-	case "_notify":
-		notifyWaiters(w, r)
-		return
+	}
+	if *flagTailwind {
+		if strings.HasSuffix(r.URL.Path, ".css") {
+			out := cssFiles.getOutput(r.URL.Path)
+			if out != "" {
+				http.ServeFile(w, r, out)
+			} else {
+				log.Println(cssFiles.paths)
+				log.Println(fmt.Sprintf("didn't find css => %s", r.URL.Path))
+				http.Error(w, "css file not found", http.StatusInternalServerError)
+			}
+			return
+		}
 	}
 
 	http.ServeFile(w, r, filepath.Join(".", r.URL.Path))
 }
 
-func waitForUpdate(w http.ResponseWriter, r *http.Request) {
-	waitChannel <- struct{}{}
-	http.ServeContent(w, r, "", time.Now(), bytes.NewReader(nil))
-}
-
-func notifyWaiters(w http.ResponseWriter, r *http.Request) {
-	for {
-		select {
-		case <-waitChannel:
-		default:
-			http.ServeContent(w, r, "", time.Now(), bytes.NewReader(nil))
-			return
-		}
-	}
-}
-
 func main() {
 	flag.Parse()
-	http.HandleFunc("/", handle)
-	log.Fatal(http.ListenAndServe(*flagHTTP, nil))
+
+	if *flagBuild {
+		c, err := readConfig(*flagAirConf)
+		*conf = *c
+		if err != nil {
+			log.Fatal(http.ListenAndServe(*flagHTTP, nil))
+			return
+		}
+		var wg sync.WaitGroup
+		if *flagTailwind {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				buildAllCssFiles()
+			}()
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buildWasm()
+		}()
+
+		wg.Wait()
+	} else if *flagRun {
+		c, err := readConfig(*flagAirConf)
+		*conf = *c
+		if err != nil {
+			log.Fatal(http.ListenAndServe(*flagHTTP, nil))
+			return
+		}
+
+		// init css files from tmp
+		initCssFiles()
+
+		http.HandleFunc("/", handle)
+		log.Fatal(http.ListenAndServe(*flagHTTP, nil))
+	} else if *flagWatch {
+		e, err := runner.NewEngine(*flagAirConf, true)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		// Tell the user that build & bin should not be changed
+		// Copy executable wasmserver to tmp
+		e.Run()
+	}
 }

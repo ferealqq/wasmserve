@@ -1,24 +1,20 @@
 package cmd
 
 import (
-	"flag"
+	"errors"
 	"fmt"
 	"os"
+
+	. "github.com/hajimehoshi/wasmserve/pkg"
 
 	"github.com/spf13/cobra"
 )
 
-var (
-	flagHTTP        = flag.String("http", ":8080", "HTTP bind address to serve")
-	flagTags        = flag.String("tags", "", "Build tags")
-	flagAllowOrigin = flag.String("allow-origin", "", "Allow specified origin (or * for all origins) to make requests to this server")
-	flagOverlay     = flag.String("overlay", "", "Overwrite source files with a JSON file (see https://pkg.go.dev/cmd/go for more details)")
-	flagBuild       = flag.Bool("build", false, "Build tailwind & wasm")
-	flagRun         = flag.Bool("run", false, "Run HTTP server")
-	flagWatch       = flag.Bool("watch", false, "Watch file changes and serve http")
-	flagAirConf     = flag.String("config", "wasmserve.toml", "Path to wasmserve.toml configuration")
-	flagInit        = flag.Bool("init", false, "create initial configurations")
-)
+var flagConf string
+var flagHTTP string
+var flagTags string
+var flagAllowOrigin string
+var flagOverlay string
 
 var rootCmd = &cobra.Command{
 	Use:   "wasmserve",
@@ -34,6 +30,40 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(initCmd)
+
+	buildCmd.Flags().StringVarP(&flagConf, "config", "c", DefaultTomlFile, "Which config file to use")
+	watchCmd.Flags().StringVarP(&flagConf, "config", "c", DefaultTomlFile, "Which config file to use")
+	runCmd.Flags().StringVarP(&flagConf, "config", "c", DefaultTomlFile, "Which config file to use")
+
+	// TODO Test http
+	runCmd.Flags().StringVarP(&flagHTTP, "http", "p", DefaultHttp, "HTTP bind address to serve")
+	// TODO Test tags
+	runCmd.Flags().StringVarP(&flagTags, "tags", "t", DefaultTags, "Build tags")
+	// TODO Test allow origin
+	runCmd.Flags().StringVarP(&flagAllowOrigin, "allow-origin", "a", DefaultAllowOrigin, "Allow specified origin (or * for all origins) to make requests to this server")
+	// TODO Test overlay
+	runCmd.Flags().StringVarP(&flagOverlay, "overlay", "o", DefaultOverlay, "Overwrite source files with a JSON file (see https://pkg.go.dev/cmd/go for more details)")
+}
+
+// returns whether the user uses config .toml or not
+func useConfig() bool {
+	if _, err := os.Stat(flagConf); errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	return true
+}
+
+func initConf() error {
+	if useConfig() {
+		c, err := ReadConfig(flagConf)
+		if err != nil {
+			return err
+		}
+		*Config = *c
+	} else {
+		*Config = DefaultConfig()
+	}
+	return nil
 }
 
 func Execute() {

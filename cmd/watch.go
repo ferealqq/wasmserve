@@ -6,8 +6,9 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/cosmtrek/air/runner"
 	. "github.com/hajimehoshi/wasmserve/pkg"
+
+	"github.com/cosmtrek/air/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -20,14 +21,17 @@ var watchCmd = &cobra.Command{
 			exitCodeErr       = 1
 			exitCodeInterrupt = 2
 		)
-
-		c, err := ReadConfig(*flagAirConf)
-		*Config = *c
-		if err != nil {
+		log.Println("initConf")
+		if err := initConf(); err != nil {
 			log.Fatal(err)
 			return
 		}
-		e, err := runner.NewEngine(*flagAirConf, true)
+		log.Println("init success")
+		if flagConf != DefaultTomlFile {
+			log.Println("Remember to change [build] cmd, bin and full_bin args to use custom config file")
+		}
+		log.Printf("flagConf => %s\n", flagConf)
+		e, err := runner.NewEngine(flagConf, true)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
@@ -50,7 +54,7 @@ var watchCmd = &cobra.Command{
 			<-signalChan
 			os.Exit(exitCodeInterrupt)
 		}()
-
+		log.Println("running engine")
 		e.Run()
 	},
 }

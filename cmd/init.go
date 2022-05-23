@@ -7,79 +7,16 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/pelletier/go-toml"
 	"github.com/spf13/cobra"
+
+	. "github.com/hajimehoshi/wasmserve/pkg"
 )
 
-func createConfTomlString(enableTailwind bool, tailwindExec string) string {
-	return fmt.Sprintf(`
-# Wasm serve config
-enable_tailwind=%s
-tailwind_exec="%s"
-wasm_file="main.wasm"
-
-# AIR Config
-# Config file for [Air](https://github.com/cosmtrek/air) in TOML format
-# Working directory
-# . or absolute path, please note that the directories following must be under root.
-root = "."
-tmp_dir = "tmp"
-
-[build]
-# Just plain old shell command. You could use 'make' as well.
-cmd = "wasmserve build"
-# Binary file yields from 'cmd'.
-bin = "wasmserve run"
-# Customize binary, can setup environment variables when run your app.
-full_bin = "wasmserve run"
-# Watch these filename extensions.
-include_ext = ["go", "tpl", "tmpl", "html", "css"]
-# Ignore these filename extensions or directories.
-exclude_dir = ["assets", "tmp", "vendor", "frontend/node_modules"]
-# Watch these directories if you specified.
-include_dir = []
-# Exclude files.
-exclude_file = []
-# Exclude specific regular expressions.
-exclude_regex = ["_test.go"]
-# Exclude unchanged files.
-exclude_unchanged = true
-# Follow symlink for directories
-follow_symlink = true
-# This log file places in your tmp_dir.
-log = "air.log"
-# It's not necessary to trigger build each time file changes if it's too frequent.
-delay = 1000 # ms
-# Stop running old binary when build errors occur.
-stop_on_error = true
-# Send Interrupt signal before killing process (windows does not support this feature)
-send_interrupt = true
-# Delay after sending Interrupt signal
-kill_delay = 400 # ms
-# Add additional arguments when running binary (bin/full_bin). Will run './tmp/main hello world'.
-args_bin = []
-
-[log]
-# Show log time
-time = false
-
-[color]
-# Customize each part's color. If no color found, use the raw app log.
-main = "magenta"
-watcher = "cyan"
-build = "yellow"
-runner = "green"
-
-[misc]
-# Delete tmp directory on exit
-clean_on_exit = true
-`, strconv.FormatBool(enableTailwind), tailwindExec)
-}
-
-const DEFAULT_TAILWIND_CONFIG = `module.exports = {
+const defaultTailwindConfig = `module.exports = {
 	content: ["./**/*.{html,go}"],
 	theme: {
 	  extend: {},
@@ -109,10 +46,10 @@ func getArchitecture() string {
 
 func __init() {
 	enableTailwind := true
-	var confToml string
 	prompt := &survey.Confirm{Message: "Would you like to enable tailwind?"}
 	survey.AskOne(prompt, &enableTailwind)
 
+	tomlConfig := DefaultTomlContent()
 	if enableTailwind {
 		var (
 			NPX    = "Use npx tailwindcss"
@@ -125,11 +62,12 @@ func __init() {
 			Options: []string{NPX, LOCAL, MANUAL},
 		}
 		survey.AskOne(prompt, &tailwindExec)
+		tomlConfig.EnableTailwind = true
 		switch tailwindExec {
 		case NPX:
-			confToml = createConfTomlString(true, "npx tailwindcss")
+			tomlConfig.TailwindExec = "npx tailwindcss"
 		case MANUAL:
-			confToml = createConfTomlString(true, "CUSTOM TAILWIND BUILD COMMAND")
+			tomlConfig.TailwindExec = "CUSTOM TAILWIND BUILD"
 			fmt.Printf("Remember to specify your tailwind build command in wasmserve.toml\n")
 		case LOCAL:
 			url := fmt.Sprintf(
@@ -166,24 +104,28 @@ func __init() {
 
 			fmt.Println("Tailwind executable downloaded")
 
-			confToml = createConfTomlString(true, "./tailwindcss")
+			tomlConfig.TailwindExec = fmt.Sprintf("./%s", tailfile)
 		}
 		defaultTailwind := true
 		useDefault := &survey.Confirm{Message: "Would you like to use the default tailwind.config.js?"}
 		survey.AskOne(useDefault, &enableTailwind)
 		if defaultTailwind {
-			e := os.WriteFile("tailwind.config.js", []byte(DEFAULT_TAILWIND_CONFIG), 0644)
+			e := os.WriteFile("tailwind.config.js", []byte(defaultTailwindConfig), 0644)
 			if e != nil {
 				log.Fatal(e)
 			}
 			fmt.Println("tailwind.config.js created")
 		}
-	} else {
-		confToml = createConfTomlString(false, "")
 	}
-	err := os.WriteFile("wasmserve.toml", []byte(confToml), 0644)
+	b, err := toml.Marshal(tomlConfig)
 	if err != nil {
 		log.Fatal(err)
+		return
+	}
+
+	if err := os.WriteFile("wasmserve.toml", b, 0644); err != nil {
+		log.Fatal(err)
+		return
 	}
 
 	fmt.Println("\nwasmserve.toml created")

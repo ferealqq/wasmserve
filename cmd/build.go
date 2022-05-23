@@ -192,13 +192,13 @@ func buildWasm() {
 }
 
 var buildCmd = &cobra.Command{
-	Use:   "build",
-	Short: "build all the webassembly and css files",
-	Long:  `TODO`,
+	Use:              "build",
+	Short:            "build all the webassembly and css files",
+	Long:             `TODO`,
+	TraverseChildren: true,
 	Run: func(cmd *cobra.Command, args []string) {
-		c, err := ReadConfig(*flagAirConf)
-		*Config = *c
-		if err != nil {
+		log.Println(flagConf)
+		if err := initConf(); err != nil {
 			log.Fatal(err)
 			return
 		}

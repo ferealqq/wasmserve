@@ -127,9 +127,7 @@ var runCmd = &cobra.Command{
 	Short: "Run HTTP server that serves the built webassembly and other static files",
 	Long:  `TODO`,
 	Run: func(cmd *cobra.Command, args []string) {
-		c, err := ReadConfig(*flagAirConf)
-		*Config = *c
-		if err != nil {
+		if err := initConf(); err != nil {
 			log.Fatal(err)
 			return
 		}

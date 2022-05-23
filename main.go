@@ -60,7 +60,6 @@ var (
 	flagTags        = flag.String("tags", "", "Build tags")
 	flagAllowOrigin = flag.String("allow-origin", "", "Allow specified origin (or * for all origins) to make requests to this server")
 	flagOverlay     = flag.String("overlay", "", "Overwrite source files with a JSON file (see https://pkg.go.dev/cmd/go for more details)")
-	flagTailwind    = flag.Bool("enable-tailwind", false, "Use tailwind")
 	flagBuild       = flag.Bool("build", false, "Build tailwind & wasm")
 	flagRun         = flag.Bool("run", false, "Run HTTP server")
 	flagWatch       = flag.Bool("watch", false, "Watch file changes and serve http")
@@ -147,7 +146,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if *flagTailwind {
+	if conf.EnableTailwind {
 		if strings.HasSuffix(r.URL.Path, ".css") {
 			out := cssFiles.getOutput(r.URL.Path)
 			if out != "" {
@@ -173,7 +172,7 @@ func main() {
 			return
 		}
 		var wg sync.WaitGroup
-		if *flagTailwind {
+		if conf.EnableTailwind {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()

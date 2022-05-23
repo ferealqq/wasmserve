@@ -8,11 +8,12 @@ import (
 )
 
 type config struct {
-	TailwindExec string   `toml:"tailwind_exec"`
-	WasmFile     string   `toml:"wasm_file"`
-	Root         string   `toml:"root"`
-	TmpDir       string   `toml:"tmp_dir"`
-	Build        cfgBuild `toml:"build"`
+	TailwindExec   string   `toml:"tailwind_exec"`
+	EnableTailwind bool     `toml:"enable_tailwind"`
+	WasmFile       string   `toml:"wasm_file"`
+	Root           string   `toml:"root"`
+	TmpDir         string   `toml:"tmp_dir"`
+	Build          cfgBuild `toml:"build"`
 
 	WasmPath string
 }

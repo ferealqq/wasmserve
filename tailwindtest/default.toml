@@ -1,4 +1,5 @@
 # Wasm serve config
+enable_tailwind=true
 tailwind_exec="npx tailwindcss"
 wasm_file="main.wasm"
 

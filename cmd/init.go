@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/spf13/cobra"
 )
 
 func createConfTomlString(enableTailwind bool, tailwindExec string) string {
@@ -29,11 +30,11 @@ tmp_dir = "tmp"
 
 [build]
 # Just plain old shell command. You could use 'make' as well.
-cmd = "wasmserve --build --enable-tailwind"
+cmd = "wasmserve build"
 # Binary file yields from 'cmd'.
-bin = "wasmserve --run --enable-tailwind"
+bin = "wasmserve run"
 # Customize binary, can setup environment variables when run your app.
-full_bin = "wasmserve --run --enable-tailwind"
+full_bin = "wasmserve run"
 # Watch these filename extensions.
 include_ext = ["go", "tpl", "tmpl", "html", "css"]
 # Ignore these filename extensions or directories.
@@ -78,6 +79,14 @@ clean_on_exit = true
 `, strconv.FormatBool(enableTailwind), tailwindExec)
 }
 
+const DEFAULT_TAILWIND_CONFIG = `module.exports = {
+	content: ["./**/*.{html,go}"],
+	theme: {
+	  extend: {},
+	},
+	plugins: [],
+}`
+
 func getOsName() string {
 	switch runtime.GOOS {
 	case "darwin":
@@ -99,7 +108,7 @@ func getArchitecture() string {
 }
 
 func __init() {
-	enableTailwind := false
+	enableTailwind := true
 	var confToml string
 	prompt := &survey.Confirm{Message: "Would you like to enable tailwind?"}
 	survey.AskOne(prompt, &enableTailwind)
@@ -150,7 +159,7 @@ func __init() {
 				log.Fatal(err)
 			}
 
-			err = os.Chmod(tailfile, 0777)
+			err = os.Chmod(tailfile, 0755)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -159,10 +168,20 @@ func __init() {
 
 			confToml = createConfTomlString(true, "./tailwindcss")
 		}
+		defaultTailwind := true
+		useDefault := &survey.Confirm{Message: "Would you like to use the default tailwind.config.js?"}
+		survey.AskOne(useDefault, &enableTailwind)
+		if defaultTailwind {
+			e := os.WriteFile("tailwind.config.js", []byte(DEFAULT_TAILWIND_CONFIG), 0644)
+			if e != nil {
+				log.Fatal(e)
+			}
+			fmt.Println("tailwind.config.js created")
+		}
 	} else {
 		confToml = createConfTomlString(false, "")
 	}
-	err := os.WriteFile("wasmserve.toml", []byte(confToml), 0755)
+	err := os.WriteFile("wasmserve.toml", []byte(confToml), 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -172,4 +191,13 @@ func __init() {
 	fmt.Printf("Start your wasm server with: \n\twasmserve --watch\n\n")
 
 	fmt.Println("Happy hacking :)")
+}
+
+var initCmd = &cobra.Command{
+	Use:   "init",
+	Short: "initialize wasm configuration file",
+	Long:  `TODO`,
+	Run: func(cmd *cobra.Command, args []string) {
+		__init()
+	},
 }

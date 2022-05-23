@@ -12,52 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package cmd
 
 import (
-	"flag"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	. "github.com/hajimehoshi/wasmserve/pkg"
+	"github.com/spf13/cobra"
 )
 
-type CssPath struct {
-	output string
-	input  string // absolute path
-}
-
-func (c *CssPath) filename() string {
-	rf := strings.Split(c.output, "/")
-	return rf[len(rf)-1]
-}
-
-type CssFiles struct {
-	mu    sync.Mutex
-	paths []*CssPath
-}
-
-func (c *CssFiles) add(path *CssPath) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.paths = append(c.paths, path)
-}
-
-func (c *CssFiles) getOutput(s string) string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	for _, cs := range c.paths {
-		if strings.Contains(cs.output, s) {
-			return cs.output
-		}
-	}
-
-	return ""
-}
+// TODO Move to root?
+var cssFiles = new(CssFiles)
 
 type excludableDirs []string
 
@@ -82,7 +52,7 @@ func removeIfContains(e []string, dir string) []string {
 }
 
 func buildTailwindCss(cssPath string) (*CssPath, error) {
-	output := conf.TmpDir
+	output := Config.TmpDir
 
 	rf := strings.Split(cssPath, "/")
 	filename := rf[len(rf)-1]
@@ -93,13 +63,13 @@ func buildTailwindCss(cssPath string) (*CssPath, error) {
 
 	var ex string
 	// if the user is using npx tailwindcss or something like that we need to seperate the starting point and the rest
-	if rest := strings.Split(conf.TailwindExec, " "); len(rest) > 1 {
+	if rest := strings.Split(Config.TailwindExec, " "); len(rest) > 1 {
 		ex = rest[0]
 		log.Println(rest)
 		rest = rest[1:]
 		args = append(rest, args...)
 	} else {
-		ex = conf.TailwindExec
+		ex = Config.TailwindExec
 	}
 
 	cmdBuild := exec.Command(ex, args...)
@@ -111,11 +81,11 @@ func buildTailwindCss(cssPath string) (*CssPath, error) {
 		return nil, err
 	}
 
-	return &CssPath{output: outpath, input: cssPath}, nil
+	return &CssPath{Output: outpath, Input: cssPath}, nil
 }
 
 func cssFilesFromDir(rd string) []string {
-	var excludeDirs excludableDirs = conf.Build.ExcludeDir
+	var excludeDirs excludableDirs = Config.Build.ExcludeDir
 	// Remove if
 	excludeDirs = removeIfContains(excludeDirs, rd)
 	var compilable []string
@@ -158,7 +128,7 @@ func buildAllCssFiles() {
 			defer wg.Done()
 			cssPath, err := buildTailwindCss(file)
 			if err == nil {
-				cssFiles.add(cssPath)
+				cssFiles.Add(cssPath)
 			} else {
 				log.Print(err.Error())
 			}
@@ -169,27 +139,38 @@ func buildAllCssFiles() {
 }
 
 func initCssFiles() {
-	files := cssFilesFromDir(conf.TmpDir)
+	files := cssFilesFromDir(Config.TmpDir)
 
 	for _, f := range files {
-		cssFiles.add(&CssPath{output: f})
+		cssFiles.Add(&CssPath{Output: f})
 	}
+}
+
+func hasGo111Module(env []string) bool {
+	for _, e := range env {
+		if strings.HasPrefix(e, "GO111MODULE=") {
+			return true
+		}
+	}
+	return false
 }
 
 func buildWasm() {
 	// go build
-	args := []string{"build", "-o", conf.WasmPath}
-	if *flagTags != "" {
-		args = append(args, "-tags", *flagTags)
-	}
-	if *flagOverlay != "" {
-		args = append(args, "-overlay", *flagOverlay)
-	}
-	if len(flag.Args()) > 0 {
-		args = append(args, flag.Args()[0])
-	} else {
-		args = append(args, ".")
-	}
+	args := []string{"build", "-o", Config.WasmPath}
+	// move flags to conf
+	// if *flagTags != "" {
+	// 	args = append(args, "-tags", *flagTags)
+	// }
+	// if *flagOverlay != "" {
+	// 	args = append(args, "-overlay", *flagOverlay)
+	// }
+	// if len(flag.Args()) > 0 {
+	// 	args = append(args, flag.Args()[0])
+	// } else {
+	// 	args = append(args, ".")
+	// }
+	args = append(args, ".")
 
 	cmdBuild := exec.Command("go", args...)
 	cmdBuild.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
@@ -198,7 +179,7 @@ func buildWasm() {
 	if !hasGo111Module(cmdBuild.Env) {
 		cmdBuild.Env = append(cmdBuild.Env, "GO111MODULE=on")
 	}
-	cmdBuild.Dir = conf.Root
+	cmdBuild.Dir = Config.Root
 	out, err := cmdBuild.CombinedOutput()
 	if err != nil {
 		log.Print(err)
@@ -208,4 +189,34 @@ func buildWasm() {
 	if len(out) > 0 {
 		log.Print(string(out))
 	}
+}
+
+var buildCmd = &cobra.Command{
+	Use:   "build",
+	Short: "build all the webassembly and css files",
+	Long:  `TODO`,
+	Run: func(cmd *cobra.Command, args []string) {
+		c, err := ReadConfig(*flagAirConf)
+		*Config = *c
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+
+		var wg sync.WaitGroup
+		if Config.EnableTailwind {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				buildAllCssFiles()
+			}()
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buildWasm()
+		}()
+
+		wg.Wait()
+	},
 }

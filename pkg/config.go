@@ -1,4 +1,4 @@
-package main
+package pkg
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 
 	"github.com/pelletier/go-toml"
 )
+
+var Config = new(config)
 
 type config struct {
 	TailwindExec   string   `toml:"tailwind_exec"`
@@ -23,7 +25,7 @@ type cfgBuild struct {
 	ExcludeFile []string `toml:"exclude_file"`
 }
 
-func readConfig(path string) (*config, error) {
+func ReadConfig(path string) (*config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

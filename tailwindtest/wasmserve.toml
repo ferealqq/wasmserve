@@ -1,3 +1,4 @@
+
 # Wasm serve config
 enable_tailwind=true
 tailwind_exec="npx tailwindcss"
@@ -11,9 +12,9 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-# Just plain old shell command. You could use `make` as well.
+# Just plain old shell command. You could use 'make' as well.
 cmd = "wasmserve --build --enable-tailwind"
-# Binary file yields from `cmd`.
+# Binary file yields from 'cmd'.
 bin = "wasmserve --run --enable-tailwind"
 # Customize binary, can setup environment variables when run your app.
 full_bin = "wasmserve --run --enable-tailwind"

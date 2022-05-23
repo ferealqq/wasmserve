@@ -63,7 +63,8 @@ var (
 	flagBuild       = flag.Bool("build", false, "Build tailwind & wasm")
 	flagRun         = flag.Bool("run", false, "Run HTTP server")
 	flagWatch       = flag.Bool("watch", false, "Watch file changes and serve http")
-	flagAirConf     = flag.String("config", "air.toml", "Path to air.toml configuration")
+	flagAirConf     = flag.String("config", "wasmserve.toml", "Path to wasmserve.toml configuration")
+	flagInit        = flag.Bool("init", false, "create initial configurations")
 )
 
 var (
@@ -163,12 +164,13 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-
-	if *flagBuild {
+	if *flagInit {
+		__init()
+	} else if *flagBuild {
 		c, err := readConfig(*flagAirConf)
 		*conf = *c
 		if err != nil {
-			log.Fatal(http.ListenAndServe(*flagHTTP, nil))
+			log.Fatal(err)
 			return
 		}
 		var wg sync.WaitGroup
@@ -190,7 +192,7 @@ func main() {
 		c, err := readConfig(*flagAirConf)
 		*conf = *c
 		if err != nil {
-			log.Fatal(http.ListenAndServe(*flagHTTP, nil))
+			log.Fatal(err)
 			return
 		}
 
@@ -207,6 +209,6 @@ func main() {
 		// Tell the user that build & bin should not be changed
 		// Copy executable wasmserver to tmp
 		e.Run()
-		// Stop the process
+		// FIXME Stop the process
 	}
 }

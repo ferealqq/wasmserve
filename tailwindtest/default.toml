@@ -1,5 +1,9 @@
-# Config file for [Air](https://github.com/cosmtrek/air) in TOML format
+# Wasm serve config
+tailwind_exec="npx tailwindcss"
+wasm_file="main.wasm"
 
+# AIR Config
+# Config file for [Air](https://github.com/cosmtrek/air) in TOML format
 # Working directory
 # . or absolute path, please note that the directories following must be under root.
 root = "."
@@ -7,11 +11,11 @@ tmp_dir = "tmp"
 
 [build]
 # Just plain old shell command. You could use `make` as well.
-cmd = "./wasmserve --build --enable-tailwind"
+cmd = "wasmserve --build --enable-tailwind"
 # Binary file yields from `cmd`.
-bin = "./wasmserve --run --enable-tailwind"
+bin = "wasmserve --run --enable-tailwind"
 # Customize binary, can setup environment variables when run your app.
-full_bin = "./wasmserve --run --enable-tailwind"
+full_bin = "wasmserve --run --enable-tailwind"
 # Watch these filename extensions.
 include_ext = ["go", "tpl", "tmpl", "html", "css"]
 # Ignore these filename extensions or directories.
@@ -52,4 +56,4 @@ runner = "green"
 
 [misc]
 # Delete tmp directory on exit
-clean_on_exit = false
+clean_on_exit = true

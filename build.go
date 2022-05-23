@@ -16,7 +16,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -52,7 +51,6 @@ func (c *CssFiles) getOutput(s string) string {
 	defer c.mu.Unlock()
 
 	for _, cs := range c.paths {
-		log.Println(fmt.Sprintf("output file => %s", cs.output))
 		if strings.Contains(cs.output, s) {
 			return cs.output
 		}
@@ -89,13 +87,22 @@ func buildTailwindCss(cssPath string) (*CssPath, error) {
 	rf := strings.Split(cssPath, "/")
 	filename := rf[len(rf)-1]
 
-	// FIXME include tailwind in executable?
 	workdir := "."
 	outpath := filepath.Join(output, filename)
-
 	args := []string{"-i", cssPath, "-o", outpath}
-	// FIXME tailwind execute choice in args
-	cmdBuild := exec.Command("./tailwindcss", args...)
+
+	var ex string
+	// if the user is using npx tailwindcss or something like that we need to seperate the starting point and the rest
+	if rest := strings.Split(conf.TailwindExec, " "); len(rest) > 1 {
+		ex = rest[0]
+		log.Println(rest)
+		rest = rest[1:]
+		args = append(rest, args...)
+	} else {
+		ex = conf.TailwindExec
+	}
+
+	cmdBuild := exec.Command(ex, args...)
 	cmdBuild.Dir = workdir
 	out, err := cmdBuild.CombinedOutput()
 	if err != nil {
@@ -113,7 +120,6 @@ func cssFilesFromDir(rd string) []string {
 	excludeDirs = removeIfContains(excludeDirs, rd)
 	var compilable []string
 	err := filepath.Walk(rd, func(path string, info os.FileInfo, err error) error {
-		log.Printf("file path => %s", path)
 		// path is absolute
 		if err != nil {
 			return err
@@ -160,27 +166,19 @@ func buildAllCssFiles() {
 	}
 
 	wg.Wait()
-
-	log.Println("tailwindfiles built")
-
-	for _, f := range cssFiles.paths {
-		log.Printf("output => %s\n input => %s\n", f.output, f.input)
-	}
 }
 
 func initCssFiles() {
 	files := cssFilesFromDir(conf.TmpDir)
-	fmt.Println("Init css")
-	log.Println(files)
+
 	for _, f := range files {
-		log.Printf("new file added => %s", f)
 		cssFiles.add(&CssPath{output: f})
 	}
 }
 
 func buildWasm() {
 	// go build
-	args := []string{"build", "-o", conf.wasmPath}
+	args := []string{"build", "-o", conf.WasmPath}
 	if *flagTags != "" {
 		args = append(args, "-tags", *flagTags)
 	}
@@ -192,7 +190,7 @@ func buildWasm() {
 	} else {
 		args = append(args, ".")
 	}
-	log.Print("go ", strings.Join(args, " "))
+
 	cmdBuild := exec.Command("go", args...)
 	cmdBuild.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
 	// If GO111MODULE is not specified explicitly, enable Go modules.

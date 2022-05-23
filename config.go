@@ -1,17 +1,20 @@
 package main
 
 import (
+	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/pelletier/go-toml"
 )
 
 type config struct {
-	Root     string   `toml:"root"`
-	TmpDir   string   `toml:"tmp_dir"`
-	Build    cfgBuild `toml:"build"`
-	wasmPath string
+	TailwindExec string   `toml:"tailwind_exec"`
+	WasmFile     string   `toml:"wasm_file"`
+	Root         string   `toml:"root"`
+	TmpDir       string   `toml:"tmp_dir"`
+	Build        cfgBuild `toml:"build"`
+
+	WasmPath string
 }
 
 type cfgBuild struct {
@@ -29,7 +32,7 @@ func readConfig(path string) (*config, error) {
 	if err := toml.Unmarshal(data, conf); err != nil {
 		return nil, err
 	}
-	conf.wasmPath = filepath.Join(conf.TmpDir, "main.wasm")
+	conf.WasmPath = fmt.Sprintf("%s/%s", conf.TmpDir, conf.WasmFile)
 
 	return conf, nil
 }

@@ -2,3 +2,6 @@
 .vscode
 vendor
 vendor/*
+
+wasmserve
+tmp

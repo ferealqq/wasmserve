@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"errors"
 	"flag"
-	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -139,12 +138,12 @@ func handle(w http.ResponseWriter, r *http.Request) {
 			http.ServeFile(w, r, f)
 			return
 		}
-	case "main.wasm":
+	case conf.WasmFile:
 		if _, err := os.Stat(fpath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		} else if errors.Is(err, fs.ErrNotExist) {
-			http.ServeFile(w, r, conf.wasmPath)
+			http.ServeFile(w, r, conf.WasmPath)
 			return
 		}
 	}
@@ -154,8 +153,6 @@ func handle(w http.ResponseWriter, r *http.Request) {
 			if out != "" {
 				http.ServeFile(w, r, out)
 			} else {
-				log.Println(cssFiles.paths)
-				log.Println(fmt.Sprintf("didn't find css => %s", r.URL.Path))
 				http.Error(w, "css file not found", http.StatusInternalServerError)
 			}
 			return
@@ -211,5 +208,6 @@ func main() {
 		// Tell the user that build & bin should not be changed
 		// Copy executable wasmserver to tmp
 		e.Run()
+		// Stop the process
 	}
 }

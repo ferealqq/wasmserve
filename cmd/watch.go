@@ -33,6 +33,7 @@ var watchCmd = &cobra.Command{
 		log.Printf("flagConf => %s\n", flagConf)
 		e, err := runner.NewEngine(flagConf, true)
 		if err != nil {
+			log.Println("Running fatal error: ")
 			log.Fatal(err.Error())
 		}
 

@@ -119,7 +119,23 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.ServeFile(w, r, filepath.Join(".", r.URL.Path))
+	if f, err := os.Stat(filepath.Join(".", r.URL.Path)); errors.Is(err, os.ErrNotExist){
+		if _, err := os.Stat(fpath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		} else if errors.Is(err, fs.ErrNotExist) {
+			fargs := flag.Args()
+			argv := make([]string, 0, len(fargs))
+			for _, a := range fargs {
+				argv = append(argv, `"`+template.JSEscapeString(a)+`"`)
+			}
+			h := strings.ReplaceAll(indexHTML, "{{.Argv}}", "["+strings.Join(argv, ", ")+"]")
+			http.ServeContent(w, r, "index.html", time.Now(), bytes.NewReader([]byte(h)))
+			return
+		}
+	}else{
+		http.ServeFile(w, r, f.Name())
+	}
 }
 
 var runCmd = &cobra.Command{
@@ -135,7 +151,8 @@ var runCmd = &cobra.Command{
 		initCssFiles()
 
 		http.HandleFunc("/", handle)
-		port := ":8080"
+		port := ":"+Config.Http
+		log.Printf("Trying to listen to port: "+port)
 		log.Printf("Listening connections on http://localhost%s", port)
 		log.Fatal(http.ListenAndServe(port, nil))
 	},
